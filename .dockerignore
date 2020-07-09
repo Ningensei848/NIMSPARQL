@@ -1,0 +1,8 @@
+tests
+.vscode
+.venv
+__pycache__
+*.db
+*/sparql/.nuxt*
+*/sparql/.vscode*
+*/sparql/node_modules*

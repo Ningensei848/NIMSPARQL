@@ -1,0 +1,214 @@
+version: "3.8"
+services:
+  apm-server:
+    build:
+      context: ${PWD}/elastic_apm_server
+      dockerfile: Dockerfile.apm-server
+    depends_on:
+      - elasticsearch
+      - kibana
+    cap_add: ["CHOWN", "DAC_OVERRIDE", "SETGID", "SETUID"]
+    cap_drop: ["ALL"]
+    networks:
+      - backend
+    command: bash -c '
+      sh ./wait-for-elasticsearch.sh elasticsearch:${ELASTICSEARCH_PORT} &&
+      sh ./wait-for-kibana.sh kibana:${KIBANA_PORT} &&
+      apm-server -e
+      -E apm-server.rum.enabled=true
+      -E setup.kibana.host=kibana:${KIBANA_PORT}
+      -E setup.template.settings.index.number_of_replicas=0
+      -E apm-server.kibana.enabled=true
+      -E apm-server.kibana.host=kibana:${KIBANA_PORT}
+      -E output.elasticsearch.hosts=["elasticsearch:${ELASTICSEARCH_PORT}"]'
+    healthcheck:
+      interval: 30s
+      retries: 12
+      test: curl --write-out 'HTTP %{http_code}' --fail --silent --output /dev/null http://localhost:8200/
+    labels:
+      traefik.enable: "true"
+      traefik.host: apm-server
+      traefik.docker.network: api_backend # current Dir_name + network name
+      traefik.http.routers.apm-server.entrypoints: web
+      traefik.http.services.apm-server.loadbalancer.server.port: ${APM_SERVER_PORT}
+
+  kibana:
+    build:
+      context: ${PWD}/elastic_kibana
+      dockerfile: Dockerfile.kibana
+    depends_on:
+      - elasticsearch
+    environment: # kibana config cf. https://www.elastic.co/guide/en/kibana/current/settings.html
+      SERVER_HOST: localhost
+      SERVER_NAME: kibana.${DOMAIN_NAME}
+      SERVER_PORT: ${KIBANA_PORT}
+      ELASTICSEARCH_HOSTS: http://elasticsearch:${ELASTICSEARCH_PORT}
+      LOGGING_JSON: "true"
+    # ports:
+    #   - ${KIBANA_PORT}:${KIBANA_PORT}
+    networks:
+      - backend
+    command: bash -c '
+      sh ./wait-for-elasticsearch.sh elasticsearch:${ELASTICSEARCH_PORT} &&
+      kibana'
+    healthcheck:
+      interval: 30s
+      retries: 20
+      test: curl --write-out 'HTTP %{http_code}' --fail --silent --output /dev/null http://localhost:${KIBANA_PORT}/api/status
+    # volumes:
+    #   - ./elastic/kibana.yml:/usr/share/kibana/config/kibana.yml
+    # labels:
+    #   - "traefik.enable=true"
+    #   - "traefik.http.routers.kibana.rule=Host(`kibana.localhost`)"
+    #   - "traefik.http.routers.kibana.entrypoints=web"
+    #   - "traefik.http.services.kibana.loadbalancer.server.port=${KIBANA_PORT}"
+
+  elasticsearch:
+    build:
+      context: ${PWD}/elastic_engine
+      dockerfile: Dockerfile.elasticsearch
+    environment:
+      - bootstrap.memory_lock=true
+      - cluster.name=docker-cluster
+      - cluster.routing.allocation.disk.threshold_enabled=false
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-XX:UseAVX=2 -Xms1g -Xmx1g
+    ulimits:
+      memlock:
+        hard: -1
+        soft: -1
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+    # ports:
+    #   - ${ELASTICSEARCH_PORT}:${ELASTICSEARCH_PORT}
+    networks:
+      - backend
+    healthcheck:
+      interval: 30s
+      retries: 10
+      # statusがredだったら 1 を送出する（-vオプションで通常と逆の処理になっている）（一致したら0のはずだけど，1を送出している）
+      # 0 のとき　healthy, 1のときunhealthy
+      test: curl -s http://localhost:${ELASTICSEARCH_PORT}/_cluster/health | grep -vq '"status":"red"'
+    # labels:
+    #   - "traefik.enable=true"
+    #   - "traefik.http.routers.elasticsearch.rule=Host(`elasticsearch.localhost`)"
+    #   - "traefik.http.routers.elasticsearch.entrypoints=web"
+    #   - "traefik.http.services.elasticsearch.loadbalancer.server.port=${ELASTICSEARCH_PORT}"
+
+  fastapi:
+    build:
+      context: ${PWD}/fastapi
+      dockerfile: Dockerfile.fastapi
+    depends_on:
+      - apm-server
+      - elasticsearch
+      - mysql
+    environment:
+      APM_SERVER_URL: http://apm-server:${APM_SERVER_PORT}
+      ELASTICSEARCH_URL: http://elasticsearch:${ELASTICSEARCH_PORT}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD} # This variable is mandatory and specifies the password that will be set for the MySQL root superuser account.
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_CONTAINER_HOST: ${MYSQL_CONTAINER_HOST}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_CHARACTER: ${MYSQL_CHARACTER}
+    ports:
+      - ${FASTAPI_PORT}:${FASTAPI_PORT}
+    networks:
+      - backend
+    command: bash -c '
+      sh ./wait-for-elasticsearch.sh elasticsearch:${ELASTICSEARCH_PORT} &&
+      sh ./wait-for-apm-server.sh apm-server:${APM_SERVER_PORT} &&
+      sh ./wait-for-mysql.sh ${MYSQL_CONTAINER_HOST} ${MYSQL_USER} ${MYSQL_PASSWORD} &&
+      uvicorn main:app --host=0.0.0.0 --port=${FASTAPI_PORT}'
+    healthcheck:
+      interval: 30s
+      retries: 20
+      test: curl --write-out 'HTTP %{http_code}' --fail --silent --output /dev/null http://localhost:${FASTAPI_PORT}/
+    # labels:
+    #   - "traefik.enable=true"
+    #   - "traefik.http.routers.fastapi.rule=Host(`localhost`)"
+    #   - "traefik.http.routers.fastapi.entrypoints=web"
+    #   # cf. https://bit.ly/2UVPL2V
+    #   - "traefik.http.middlewares.test-stripprefix.stripprefix.prefixes=/api/v1"
+    #   - "traefik.http.services.fastapi.loadbalancer.server.port=${FASTAPI_PORT}"
+
+  mysql:
+    build:
+      context: ${PWD}/mysql
+      dockerfile: Dockerfile.mysql
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD} # This variable is mandatory and specifies the password that will be set for the MySQL root superuser account.
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_CHARACTER: ${MYSQL_CHARACTER}
+      TZ: "Asia/Tokyo"
+    restart: always
+    volumes:
+      - mysqldb:/var/lib/mysql
+    ports:
+      - ${MYSQL_PORT}:${MYSQL_PORT}
+    networks:
+      - backend
+    # healthcheck:
+    # labels:
+    #   - "traefik.http.services.mysql.loadbalancer.server.port=${MYSQL_PORT}"
+
+  # https://fastapi.tiangolo.com/advanced/behind-a-proxy/#testing-locally-with-traefik
+  traefik:
+    # build: # TODO: build from dockerfile for COPY routes.toml file
+    # The official v2 Traefik docker image
+    image: traefik:v2.2
+    # Enables the web UI and tells Traefik to listen to docker
+    command:
+      - "--log.level=DEBUG"
+      # Enabling docker provider
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      # Do not expose containers unless explicitly told so
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+    ports:
+      # The HTTP port
+      - "8888:80"
+      # The Web UI (enabled by --api.insecure=true)
+      - "8780:8080"
+    volumes:
+      # So that Traefik can listen to the Docker events
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - ${PWD}/traefik/traefik.yml:/etc/traefik/traefik.yml
+
+  app:
+    build:
+      context: ${PWD}/app
+      dockerfile: Dockerfile.app
+    depends_on:
+      - fastapi
+    # environment:
+    # ports:
+    #   - 9292:9292
+    # networks:
+    #   - backend
+    # command: bash -c '
+    #   sh ./wait-for-elasticsearch.sh elasticsearch:9200 &&
+    #   sh ./wait-for-apm-server.sh apm-server:8200 &&
+    #   uvicorn main:app --host=0.0.0.0 --port=9292'
+    # healthcheck:
+    #   interval: 30s
+    #   retries: 20
+    #   test: curl --write-out 'HTTP %{http_code}' --fail --silent --output /dev/null http://localhost:9292/
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.app.rule=Host(`app.localhost`)"
+      - "traefik.http.routers.app.entrypoints=web"
+
+volumes:
+  esdata:
+    driver: local
+  mysqldb:
+    driver: local
+networks:
+  backend:
+    driver: bridge

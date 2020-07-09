@@ -1,0 +1,17 @@
+FROM python:3.8-slim-buster
+
+EXPOSE 9292
+WORKDIR /App
+
+RUN apt-get -y update && apt-get -y upgrade && apt-get --fix-missing -y install curl build-essential python3-dev default-libmysqlclient-dev
+COPY requirements.txt /App
+RUN curl https://bootstrap.pypa.io/get-pip.py | python \
+    && python -m pip install --no-cache --disable-pip-version-check -r /App/requirements.txt
+
+COPY db/ ./db/
+COPY ./wait-for-elasticsearch.sh .
+COPY ./wait-for-apm-server.sh .
+COPY ./wait-for-mysql.sh .
+COPY main.py .
+
+

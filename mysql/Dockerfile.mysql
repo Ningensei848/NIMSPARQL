@@ -1,0 +1,15 @@
+FROM mysql:8.0
+# COPY db/my.cnf /etc/mysql/conf.d/my.cnf
+
+# RUN mkdir /var/log/mysql && \
+#     > /var/log/mysql/mysql-error.log && \
+#     > /var/log/mysql/mysql-query.log && \
+#     > /var/log/mysql/mysql-slow.log
+# RUN echo $MYSQL_USER
+# RUN chown -R $MYSQL_USER /var/log/mysql
+# RUN chown -R $MYSQL_USER /var/lib/mysql
+
+# COPY db/initdb.d/* /docker-entrypoint-initdb.d/
+# RUN chmod -R 777 /docker-entrypoint-initdb.d/
+# RUN chmod +x /docker-entrypoint-initdb.d/*
+RUN echo "mysql container has built!"
