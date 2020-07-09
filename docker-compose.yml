@@ -2,7 +2,7 @@ version: "3.8"
 services:
   apm-server:
     build:
-      context: ${PWD}/elastic_apm_server
+      context: ${PWD}/elastic
       dockerfile: Dockerfile.apm-server
     depends_on:
       - elasticsearch
@@ -34,7 +34,7 @@ services:
 
   kibana:
     build:
-      context: ${PWD}/elastic_kibana
+      context: ${PWD}/elastic
       dockerfile: Dockerfile.kibana
     depends_on:
       - elasticsearch
@@ -65,7 +65,7 @@ services:
 
   elasticsearch:
     build:
-      context: ${PWD}/elastic_engine
+      context: ${PWD}/elastic
       dockerfile: Dockerfile.elasticsearch
     environment:
       - bootstrap.memory_lock=true

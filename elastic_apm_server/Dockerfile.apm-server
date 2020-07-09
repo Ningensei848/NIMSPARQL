@@ -1,5 +1,0 @@
-# Dockerfile.apm-server
-FROM docker.elastic.co/apm/apm-server-oss:7.8.0
-
-COPY ./wait-for-elasticsearch.sh .
-COPY ./wait-for-kibana.sh .
