@@ -24,10 +24,9 @@ services:
     healthcheck:
       interval: 30s
       retries: 12
-      test: curl --write-out 'HTTP %{http_code}' --fail --silent --output /dev/null http://localhost:8200/
+      test: curl --write-out 'HTTP %{http_code}' --fail --silent --output /dev/null http://localhost:${APM_SERVER_PORT}/
     labels:
       traefik.enable: "true"
-      # traefik.host: apm-server
       traefik.docker.network: ${NETWORK_NAME}
       traefik.http.routers.apm-server.entrypoints: "web,websecure"
       traefik.http.services.apm-server.loadbalancer.server.port: ${APM_SERVER_PORT}
@@ -44,8 +43,6 @@ services:
       SERVER_PORT: ${KIBANA_PORT}
       ELASTICSEARCH_HOSTS: http://elasticsearch:${ELASTICSEARCH_PORT}
       LOGGING_JSON: "true"
-    # ports:
-    #   - ${KIBANA_PORT}:${KIBANA_PORT}
     networks:
       - container-link
     command: bash -c '
@@ -59,7 +56,6 @@ services:
     #   - ./elastic/kibana.yml:/usr/share/kibana/config/kibana.yml
     labels:
       traefik.enable: "true"
-      # traefik.host: kibana
       traefik.docker.network: ${NETWORK_NAME}
       traefik.http.services.kibana.loadbalancer.server.port: ${KIBANA_PORT}
 
@@ -72,15 +68,13 @@ services:
       - cluster.name=docker-cluster
       - cluster.routing.allocation.disk.threshold_enabled=false
       - discovery.type=single-node
-      - ES_JAVA_OPTS=-XX:UseAVX=2 -Xms1g -Xmx1g
+      - ES_JAVA_OPTS=-XX:UseAVX=2 -Xms400m -Xmx400m
     ulimits:
       memlock:
         hard: -1
         soft: -1
     volumes:
       - esdata:/usr/share/elasticsearch/data
-    # ports:
-    #   - ${ELASTICSEARCH_PORT}:${ELASTICSEARCH_PORT}
     networks:
       - container-link
     healthcheck:
@@ -111,8 +105,6 @@ services:
       MYSQL_CONTAINER_HOST: ${MYSQL_CONTAINER_HOST}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_CHARACTER: ${MYSQL_CHARACTER}
-    # ports:
-    #   - ${FASTAPI_PORT}:${FASTAPI_PORT}
     networks:
       - container-link
     command: bash -c '
@@ -162,18 +154,8 @@ services:
 
   # https://fastapi.tiangolo.com/advanced/behind-a-proxy/#testing-locally-with-traefik
   traefik:
-    # build: # TODO: build from dockerfile for COPY routes.toml file
     # The official v2 Traefik docker image
     image: traefik:v2.2
-    # Enables the web UI and tells Traefik to listen to docker
-    command:
-      - "--log.level=DEBUG"
-      # Enabling docker provider
-      - "--api.insecure=true"
-      - "--providers.docker=true"
-      # Do not expose containers unless explicitly told so
-      - "--providers.docker.exposedbydefault=false"
-      - "--entrypoints.web.address=:80"
     ports:
       # The HTTP port
       - "80:80"
@@ -192,13 +174,11 @@ services:
       dockerfile: Dockerfile.app
     depends_on:
       - fastapi
-    # ports:
-    #   - ${APP_PORT}:${APP_PORT}
     networks:
       - container-link
     command: yarn start
     environment:
-      NUXT_HOST: 0.0.0.0
+      NUXT_HOST: ${APP_HOST}
       NUXT_PORT: ${APP_PORT}
       API_URL: "http://traefik"
       API_URL_BROWSER: "http://${DOMAIN_NAME}"
