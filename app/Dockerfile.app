@@ -1,18 +1,18 @@
-FROM node:14.4.0-buster-slim
+# ------------------------------ Build Stage ----------------------------------
+FROM node:14.5.0-alpine as builder
+RUN apk update && apk add git python make g++
+# RUN git clone https://github.com/Ningensei848/EasySparql.git
+# WORKDIR EasySparql
+# RUN yarn install
+# RUN yarn build
+
+WORKDIR EasySparql
+COPY ./EasySparql/package.json /EasySparql/package.json
+RUN yarn install
+COPY ./EasySparql/ /EasySparql/
+RUN yarn build
+
+# ------------------------------ Prodction Stage ------------------------------
+FROM node:14.5.0-alpine
 WORKDIR /App
-
-
-# パッケージをコピー(このファイルだけ別にして先にインストールしたほうが良い)
-COPY ./sparql/package*.json ./
-# npm モジュールをインストール
-# 必要なツールをインストール
-# RUN apt-get -y update && apt-get -y upgrade && apt-get -y install curl
-# RUN curl --compressed -o- -L https://yarnpkg.com/install.sh | bash && . ~/.bashrc && yarn install --quiet
-
-RUN npm install -g npm && npm install --quiet
-
-# yarn install --quiet
-
-# instead of clone from remote repository
-COPY ./sparql/ App/
-
+COPY --from=builder /EasySparql /App

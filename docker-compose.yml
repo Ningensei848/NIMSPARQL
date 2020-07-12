@@ -10,7 +10,7 @@ services:
     cap_add: ["CHOWN", "DAC_OVERRIDE", "SETGID", "SETUID"]
     cap_drop: ["ALL"]
     networks:
-      - backend
+      - container-link
     command: bash -c '
       sh ./wait-for-elasticsearch.sh elasticsearch:${ELASTICSEARCH_PORT} &&
       sh ./wait-for-kibana.sh kibana:${KIBANA_PORT} &&
@@ -27,9 +27,9 @@ services:
       test: curl --write-out 'HTTP %{http_code}' --fail --silent --output /dev/null http://localhost:8200/
     labels:
       traefik.enable: "true"
-      traefik.host: apm-server
-      traefik.docker.network: api_backend # current Dir_name + network name
-      traefik.http.routers.apm-server.entrypoints: web
+      # traefik.host: apm-server
+      traefik.docker.network: ${NETWORK_NAME}
+      traefik.http.routers.apm-server.entrypoints: "web,websecure"
       traefik.http.services.apm-server.loadbalancer.server.port: ${APM_SERVER_PORT}
 
   kibana:
@@ -47,7 +47,7 @@ services:
     # ports:
     #   - ${KIBANA_PORT}:${KIBANA_PORT}
     networks:
-      - backend
+      - container-link
     command: bash -c '
       sh ./wait-for-elasticsearch.sh elasticsearch:${ELASTICSEARCH_PORT} &&
       kibana'
@@ -57,11 +57,11 @@ services:
       test: curl --write-out 'HTTP %{http_code}' --fail --silent --output /dev/null http://localhost:${KIBANA_PORT}/api/status
     # volumes:
     #   - ./elastic/kibana.yml:/usr/share/kibana/config/kibana.yml
-    # labels:
-    #   - "traefik.enable=true"
-    #   - "traefik.http.routers.kibana.rule=Host(`kibana.localhost`)"
-    #   - "traefik.http.routers.kibana.entrypoints=web"
-    #   - "traefik.http.services.kibana.loadbalancer.server.port=${KIBANA_PORT}"
+    labels:
+      traefik.enable: "true"
+      # traefik.host: kibana
+      traefik.docker.network: ${NETWORK_NAME}
+      traefik.http.services.kibana.loadbalancer.server.port: ${KIBANA_PORT}
 
   elasticsearch:
     build:
@@ -82,18 +82,17 @@ services:
     # ports:
     #   - ${ELASTICSEARCH_PORT}:${ELASTICSEARCH_PORT}
     networks:
-      - backend
+      - container-link
     healthcheck:
       interval: 30s
       retries: 10
       # statusがredだったら 1 を送出する（-vオプションで通常と逆の処理になっている）（一致したら0のはずだけど，1を送出している）
       # 0 のとき　healthy, 1のときunhealthy
       test: curl -s http://localhost:${ELASTICSEARCH_PORT}/_cluster/health | grep -vq '"status":"red"'
-    # labels:
-    #   - "traefik.enable=true"
-    #   - "traefik.http.routers.elasticsearch.rule=Host(`elasticsearch.localhost`)"
-    #   - "traefik.http.routers.elasticsearch.entrypoints=web"
-    #   - "traefik.http.services.elasticsearch.loadbalancer.server.port=${ELASTICSEARCH_PORT}"
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: ${NETWORK_NAME}
+      traefik.http.services.elasticsearch.loadbalancer.server.port: ${ELASTICSEARCH_PORT}
 
   fastapi:
     build:
@@ -112,26 +111,29 @@ services:
       MYSQL_CONTAINER_HOST: ${MYSQL_CONTAINER_HOST}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_CHARACTER: ${MYSQL_CHARACTER}
-    ports:
-      - ${FASTAPI_PORT}:${FASTAPI_PORT}
+    # ports:
+    #   - ${FASTAPI_PORT}:${FASTAPI_PORT}
     networks:
-      - backend
+      - container-link
     command: bash -c '
       sh ./wait-for-elasticsearch.sh elasticsearch:${ELASTICSEARCH_PORT} &&
       sh ./wait-for-apm-server.sh apm-server:${APM_SERVER_PORT} &&
       sh ./wait-for-mysql.sh ${MYSQL_CONTAINER_HOST} ${MYSQL_USER} ${MYSQL_PASSWORD} &&
-      uvicorn main:app --host=0.0.0.0 --port=${FASTAPI_PORT}'
+      uvicorn main:app --host=0.0.0.0 --port=${FASTAPI_PORT} --root-path /fastapi'
     healthcheck:
       interval: 30s
       retries: 20
       test: curl --write-out 'HTTP %{http_code}' --fail --silent --output /dev/null http://localhost:${FASTAPI_PORT}/
-    # labels:
-    #   - "traefik.enable=true"
-    #   - "traefik.http.routers.fastapi.rule=Host(`localhost`)"
-    #   - "traefik.http.routers.fastapi.entrypoints=web"
-    #   # cf. https://bit.ly/2UVPL2V
-    #   - "traefik.http.middlewares.test-stripprefix.stripprefix.prefixes=/api/v1"
-    #   - "traefik.http.services.fastapi.loadbalancer.server.port=${FASTAPI_PORT}"
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: ${NETWORK_NAME}
+      traefik.http.routers.fastapi.entrypoints: "web,websecure"
+      traefik.http.services.fastapi.loadbalancer.server.port: ${FASTAPI_PORT}
+      # cf. https://bit.ly/2UVPL2V
+      # traefik.http.middlewares.test-stripprefix.stripprefix.prefixes: "/api/v1"
+      traefik.http.routers.fastapi.rule: PathPrefix(`/fastapi`)
+      traefik.http.routers.fastapi.middlewares: fastapi-stripprefix
+      traefik.http.middlewares.fastapi-stripprefix.stripprefix.prefixes: /fastapi
 
   mysql:
     build:
@@ -151,10 +153,12 @@ services:
     ports:
       - ${MYSQL_PORT}:${MYSQL_PORT}
     networks:
-      - backend
+      - container-link
     # healthcheck:
-    # labels:
-    #   - "traefik.http.services.mysql.loadbalancer.server.port=${MYSQL_PORT}"
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: ${NETWORK_NAME}
+      traefik.http.services.mysql.loadbalancer.server.port: ${MYSQL_PORT}
 
   # https://fastapi.tiangolo.com/advanced/behind-a-proxy/#testing-locally-with-traefik
   traefik:
@@ -172,9 +176,11 @@ services:
       - "--entrypoints.web.address=:80"
     ports:
       # The HTTP port
-      - "8888:80"
+      - "80:80"
       # The Web UI (enabled by --api.insecure=true)
       - "8780:8080"
+    networks:
+      - container-link
     volumes:
       # So that Traefik can listen to the Docker events
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
@@ -186,29 +192,34 @@ services:
       dockerfile: Dockerfile.app
     depends_on:
       - fastapi
-    # environment:
     # ports:
-    #   - 9292:9292
-    # networks:
-    #   - backend
-    # command: bash -c '
-    #   sh ./wait-for-elasticsearch.sh elasticsearch:9200 &&
-    #   sh ./wait-for-apm-server.sh apm-server:8200 &&
-    #   uvicorn main:app --host=0.0.0.0 --port=9292'
-    # healthcheck:
-    #   interval: 30s
-    #   retries: 20
-    #   test: curl --write-out 'HTTP %{http_code}' --fail --silent --output /dev/null http://localhost:9292/
+    #   - ${APP_PORT}:${APP_PORT}
+    networks:
+      - container-link
+    command: yarn start
+    environment:
+      NUXT_HOST: 0.0.0.0
+      NUXT_PORT: ${APP_PORT}
+      API_URL: "http://traefik"
+      API_URL_BROWSER: "http://${DOMAIN_NAME}"
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.app.rule=Host(`app.localhost`)"
-      - "traefik.http.routers.app.entrypoints=web"
+      traefik.enable: "true"
+      traefik.docker.network: ${NETWORK_NAME}
+      traefik.http.routers.app.entrypoints: web
+      traefik.http.services.app.loadbalancer.server.port: ${APP_PORT}
+      traefik.http.routers.app.rule: Host(`${DOMAIN_NAME}`)
 
 volumes:
   esdata:
     driver: local
   mysqldb:
     driver: local
-networks:
-  backend:
+networks: # cf. https://qiita.com/satodoc/items/188a387f7439e4ec394f
+  # docker-composeで勝手にデフォルトネットワークが生成される予防。（自動で全コンテナが所属するbridgeを指定）
+  default:
+    external:
+      name: bridge
+  # コンテナ間通信用のネットワークセグメント
+  container-link:
+    name: ${NETWORK_NAME}
     driver: bridge

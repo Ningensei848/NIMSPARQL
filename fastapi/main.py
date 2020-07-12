@@ -56,7 +56,7 @@ app.add_middleware(ElasticAPM, client=apm)
 # cf. https://fastapi.tiangolo.com/tutorial/cors/
 origins = [
     "http://localhost",
-    "http://localhost:3000",
+    "http://traefik",
 ]
 
 app.add_middleware(
@@ -111,7 +111,7 @@ async def index():
 # `response_model` ---->  responseの取りうるべき型
 
 
-@app.post("/create/sparqlet", response_model=schemas.Document)
+@app.post("/create/sparqlet", response_model=schemas.Document, status_code=201)
 async def create_sparqlet(sparqlet: schemas.SPARQLet, db: Session = Depends(get_db)):
     """
     args: sparqlet expectec JSON
