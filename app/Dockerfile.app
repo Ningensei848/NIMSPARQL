@@ -1,7 +1,7 @@
 # ------------------------------ Build Stage ----------------------------------
 FROM node:14.5.0-alpine as builder
 RUN apk update && apk add git python make g++
-# RUN git clone https://github.com/Ningensei848/EasySparql.git
+RUN git clone https://github.com/Ningensei848/EasySparql.git
 WORKDIR EasySparql
 RUN yarn install
 RUN yarn build
