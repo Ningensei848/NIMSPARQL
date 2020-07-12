@@ -1,5 +1,7 @@
 .*/
 __*/
+app/EasySparql
+app/.dockerignore
 
 
 
