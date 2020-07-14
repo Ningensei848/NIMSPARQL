@@ -175,6 +175,7 @@ services:
     image: kiai848/nimsparqlist:latest
     depends_on:
       - fastapi
+      - traefik
     networks:
       - container-link
     command: yarn start
@@ -189,6 +190,10 @@ services:
       traefik.http.routers.app.entrypoints: "web"
       traefik.http.services.app.loadbalancer.server.port: ${APP_PORT}
       traefik.http.routers.app.rule: Host(`${DOMAIN_NAME}`)
+      traefik.http.middlewares.corsheader.headers.accesscontrolallowmethods: "GET,POST,OPTIONS,PUT"
+      traefik.http.middlewares.corsheader.headers.accesscontrolalloworiginlist: "*"
+      traefik.http.middlewares.corsheader.headers.accesscontrolmaxage: 100
+      traefik.http.middlewares.corsheader.headers.addvaryheader: "true"
 
 volumes:
   esdata:
