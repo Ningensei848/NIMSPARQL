@@ -55,8 +55,9 @@ app.add_middleware(ElasticAPM, client=apm)
 
 # cf. https://fastapi.tiangolo.com/tutorial/cors/
 origins = [
-    "http://localhost",
+    os.environ['CORS_ORIGIN'],
     "http://traefik",
+    "http://localhost"
 ]
 
 app.add_middleware(

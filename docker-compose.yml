@@ -99,6 +99,7 @@ services:
     environment:
       APM_SERVER_URL: http://apm-server:${APM_SERVER_PORT}
       ELASTICSEARCH_URL: http://elasticsearch:${ELASTICSEARCH_PORT}
+      CORS_ORIGIN: ${CORS_ORIGIN}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD} # This variable is mandatory and specifies the password that will be set for the MySQL root superuser account.
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
@@ -182,18 +183,14 @@ services:
     environment:
       NUXT_HOST: ${APP_HOST}
       NUXT_PORT: ${APP_PORT}
-      API_URL: "http://traefik"
-      API_URL_BROWSER: "http://${DOMAIN_NAME}"
+      BASE_URL: "http://traefik"
+      BROWSER_BASE_URL: "http://${DOMAIN_NAME}"
     labels:
       traefik.enable: "true"
       traefik.docker.network: ${NETWORK_NAME}
       traefik.http.routers.app.entrypoints: "web"
       traefik.http.services.app.loadbalancer.server.port: ${APP_PORT}
       traefik.http.routers.app.rule: Host(`${DOMAIN_NAME}`)
-      traefik.http.middlewares.corsheader.headers.accesscontrolallowmethods: "GET,POST,OPTIONS,PUT"
-      traefik.http.middlewares.corsheader.headers.accesscontrolalloworiginlist: "*"
-      traefik.http.middlewares.corsheader.headers.accesscontrolmaxage: 100
-      traefik.http.middlewares.corsheader.headers.addvaryheader: "true"
 
 volumes:
   esdata:
