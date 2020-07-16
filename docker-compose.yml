@@ -96,6 +96,7 @@ services:
       - apm-server
       - elasticsearch
       - mysql
+      - traefik
     environment:
       APM_SERVER_URL: http://apm-server:${APM_SERVER_PORT}
       ELASTICSEARCH_URL: http://elasticsearch:${ELASTICSEARCH_PORT}
@@ -125,6 +126,7 @@ services:
       # cf. https://bit.ly/2UVPL2V
       # traefik.http.middlewares.test-stripprefix.stripprefix.prefixes: "/api/v1"
       traefik.http.routers.fastapi.rule: PathPrefix(`/fastapi`)
+      traefik.http.routers.fastapi.priority: ${PRIORITY_FASTAPI}
       traefik.http.routers.fastapi.middlewares: fastapi-stripprefix
       traefik.http.middlewares.fastapi-stripprefix.stripprefix.prefixes: /fastapi
 
